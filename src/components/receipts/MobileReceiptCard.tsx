@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Printer, Download, Calendar, User, FileText, Trash2, Images } from "lucide-react";
 import type { ReceiptItem } from "@/types/receipt";
 import { formatDateISO } from "@/utils/helpers";
+import { formatAmount } from "@/utils/receiptTable";
 
 function formatPaymentDate(value?: string | null): string {
   if (!value) return "-";
@@ -84,10 +85,10 @@ export default function MobileReceiptCard({ receipt, groupCount = 1, onView, onP
               수량: {receipt.ocr_quantity != null ? receipt.ocr_quantity.toLocaleString("ko-KR") : "-"}
             </div>
             <div className="card-subtitle text-gray-700">
-              단가: {receipt.ocr_unit_price != null ? `₩${receipt.ocr_unit_price.toLocaleString("ko-KR")}` : "-"}
+              단가: {formatAmount(receipt.ocr_unit_price, receipt.ocr_currency || "KRW")}
             </div>
             <div className="card-title text-gray-900">
-              합계: {receipt.ocr_total_amount != null ? `₩${receipt.ocr_total_amount.toLocaleString("ko-KR")}` : "-"}
+              합계: {formatAmount(receipt.ocr_total_amount, receipt.ocr_currency || "KRW")}
             </div>
           </div>
 

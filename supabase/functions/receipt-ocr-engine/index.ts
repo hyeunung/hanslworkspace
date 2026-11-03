@@ -20,6 +20,7 @@ interface ReceiptExtractionResult {
   quantity?: number | null;
   unit_price?: number | null;
   total_amount?: number | null;
+  currency?: string | null;
   confidence?: "low" | "med" | "high";
 }
 
@@ -89,6 +90,7 @@ serve(async (req) => {
     const normalizedQuantity = normalizeAmount(extracted.quantity);
     const normalizedUnitPrice = normalizeAmount(extracted.unit_price);
     const normalizedAmount = normalizeAmount(extracted.total_amount);
+    const normalizedCurrency = normalizeCurrency(extracted.currency);
     const normalizedConfidence = normalizeConfidence(extracted.confidence);
 
     const { error: resultError } = await supabase
@@ -102,6 +104,7 @@ serve(async (req) => {
           quantity: normalizedQuantity,
           unit_price: normalizedUnitPrice,
           total_amount: normalizedAmount,
+          currency: normalizedCurrency,
           confidence: normalizedConfidence,
           raw_json: extracted,
         },
@@ -130,6 +133,7 @@ serve(async (req) => {
         quantity: normalizedQuantity,
         unit_price: normalizedUnitPrice,
         total_amount: normalizedAmount,
+        currency: normalizedCurrency,
         confidence: normalizedConfidence,
       },
     });
@@ -230,14 +234,17 @@ async function extractReceiptWithClaude(
 4) quantity: 수량(숫자만, 없으면 null)
 5) unit_price: 단가(숫자만, 없으면 null)
 6) total_amount: 총 합계 금액(숫자만)
-7) confidence: low | med | high
+7) currency: 금액의 통화 ISO 코드(KRW, USD, EUR, JPY 등)
+8) confidence: low | med | high
 
 규칙:
 - JSON 외 텍스트 금지
 - payment_date는 반드시 YYYY-MM-DD 형식 (예: 2026-03-09)
 - payment_date는 "결제일/승인일/승인일시/결제일시/거래일시"에서 찾을 수 있다.
 - 날짜+시간(예: 2026/03/04 21:30:21)이 보이면 날짜만 사용해 YYYY-MM-DD로 변환한다.
-- quantity, unit_price, total_amount는 숫자만 (통화기호/쉼표 제거)
+- quantity, unit_price, total_amount는 숫자만 (통화기호/쉼표 제거, 소수점은 유지)
+- currency는 영수증에 표기된 결제 통화 기준 ($ 또는 USD → USD, ₩/원 → KRW). 표기가 없으면 KRW
+- 원화 환산액이 함께 적혀 있어도 total_amount와 currency는 영수증 본 금액 기준으로 맞춘다
 - 값을 못 찾으면 null 허용`;
 
   const response = await fetch("https://api.anthropic.com/v1/messages", {
@@ -364,6 +371,14 @@ function normalizeAmount(value: unknown): number | null {
     return Number.isFinite(n) ? n : null;
   }
   return null;
+}
+
+function normalizeCurrency(value: unknown): string {
+  if (typeof value !== "string") return "KRW";
+  const raw = value.trim().toUpperCase();
+  if (raw === "$" || raw === "US$") return "USD";
+  if (raw === "₩" || raw === "원") return "KRW";
+  return /^[A-Z]{3}$/.test(raw) ? raw : "KRW";
 }
 
 function normalizePaymentDate(value: unknown): string | null {

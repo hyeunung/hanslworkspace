@@ -19,6 +19,7 @@ export interface ReceiptRow {
   quantity: number | null
   unit_price: number | null
   total_amount: number | null
+  currency: string // ISO 4217 (기본 KRW)
   memo: string
   file_name: string
   uploader: string
@@ -75,6 +76,7 @@ export const buildReceiptRows = (groups: ReceiptGroup[]): ReceiptRow[] => {
         quantity: r.ocr_quantity ?? null,
         unit_price: r.ocr_unit_price ?? null,
         total_amount: r.ocr_total_amount ?? null,
+        currency: r.ocr_currency || 'KRW',
         memo: r.memo || '',
         file_name: r.file_name || '',
         uploader: r.uploaded_by_name || r.uploaded_by || '',
@@ -84,13 +86,18 @@ export const buildReceiptRows = (groups: ReceiptGroup[]): ReceiptRow[] => {
   return rows
 }
 
-// 표시 포맷 — 기존 화면과 동일 ('YY.MM.DD, ₩천단위)
+// 표시 포맷 — 기존 화면과 동일 ('YY.MM.DD, ₩천단위 / 외화는 통화기호+소수점)
 export const formatReceiptDate = (isoDate: string): string =>
   isoDate ? isoDate.slice(2).replace(/-/g, '.') : '-'
 
-export const formatKrw = (value?: number | null): string => {
+export const formatAmount = (value?: number | null, currency: string = 'KRW'): string => {
   if (value == null || !Number.isFinite(value)) return '-'
-  return `₩${Math.round(value).toLocaleString('ko-KR')}`
+  if (currency === 'KRW') return `₩${Math.round(value).toLocaleString('ko-KR')}`
+  try {
+    return new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(value)
+  } catch {
+    return `${currency} ${value.toLocaleString('ko-KR')}`
+  }
 }
 
 // ── 필터 필드 정의 ──────────────────────────────────────────────────────────

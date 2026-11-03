@@ -2,7 +2,7 @@ import { memo, useMemo, useRef, useState, useEffect } from 'react'
 import { Download, Printer, Trash2 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { measureText, HEADER_LETTER_SPACING } from '@/utils/productionColumns'
-import { ReceiptRow, ReceiptColumnId, formatReceiptDate, formatKrw } from '@/utils/receiptTable'
+import { ReceiptRow, ReceiptColumnId, formatReceiptDate, formatAmount } from '@/utils/receiptTable'
 import type { ReceiptColumnVisibility } from './ReceiptColumnMenu'
 
 // ─── 영수증 컴팩트 테이블 (제작현황 표 형식) ────────────────────────────────
@@ -46,8 +46,8 @@ const COLUMNS: ColDef[] = [
   { id: 'merchant', label: '거래처', width: 120, align: 'left', fitText: r => r.merchant || '-', fitMax: 240 },
   { id: 'item_name', label: '품명', width: 160, align: 'left', fitText: r => r.item_name || '-', fitMax: 320 },
   { id: 'quantity', label: '수량', width: 44, align: 'right', fitText: r => r.quantity != null ? r.quantity.toLocaleString('ko-KR') : '-' },
-  { id: 'unit_price', label: '단가', width: 70, align: 'right', fitText: r => formatKrw(r.unit_price) },
-  { id: 'total_amount', label: '합계', width: 76, align: 'right', fitText: r => formatKrw(r.total_amount) },
+  { id: 'unit_price', label: '단가', width: 70, align: 'right', fitText: r => formatAmount(r.unit_price, r.currency) },
+  { id: 'total_amount', label: '합계', width: 76, align: 'right', fitText: r => formatAmount(r.total_amount, r.currency) },
   { id: 'memo', label: '메모', width: 140, align: 'left', fitText: r => r.memo || '-', fitMax: 360 },
   { id: 'uploader', label: '등록인', width: 70, fitText: r => r.uploader || '-' },
   { id: 'actions', label: '액션', width: 96 },
@@ -82,9 +82,9 @@ const ReceiptCompactRow = memo(({ row, index, columns, widths, ctx }: {
       case 'quantity':
         return <span className="text-gray-900">{row.quantity != null ? row.quantity.toLocaleString('ko-KR') : '-'}</span>
       case 'unit_price':
-        return <span className="text-gray-900">{formatKrw(row.unit_price)}</span>
+        return <span className="text-gray-900">{formatAmount(row.unit_price, row.currency)}</span>
       case 'total_amount':
-        return <span className="text-gray-900">{formatKrw(row.total_amount)}</span>
+        return <span className="text-gray-900">{formatAmount(row.total_amount, row.currency)}</span>
       case 'memo':
         return (
           <span className="inline-flex items-center gap-1 max-w-full">
