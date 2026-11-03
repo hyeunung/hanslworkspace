@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Receipt, Search, Plus, X } from "lucide-react";
+import { Receipt, Search, Plus, X, Printer } from "lucide-react";
 import { toast } from "sonner";
 import ReceiptDetailModal from "./ReceiptDetailModal";
 import MobileReceiptCard from "./MobileReceiptCard";
@@ -27,8 +27,14 @@ import { parseRoles } from "@/utils/roleHelper";
 
 // OCR 조회 1회당 영수증 수 — 영수증당 작업이 여러 건이어도 1000행 상한에 닿지 않는 크기
 const OCR_LOOKUP_CHUNK_SIZE = 200;
+// 인쇄완료 일괄 업데이트 1회당 영수증 수 — .in() id 목록이 URL 길이 한도를 넘지 않는 크기
+const PRINTED_UPDATE_CHUNK_SIZE = 200;
 
-function printReceiptImages(imageUrls: string[], onPrintDone?: () => void) {
+function printReceiptImages(
+  imageUrls: string[],
+  onPrintDone?: () => void,
+  doneMessage = '인쇄를 완료하셨습니까?'
+) {
   const printWindow = window.open('', '_blank');
   if (!printWindow) {
     toast.error('팝업이 차단되었습니다. 팝업을 허용해주세요.');
@@ -100,11 +106,15 @@ function printReceiptImages(imageUrls: string[], onPrintDone?: () => void) {
   printWindow.document.close();
 
   if (onPrintDone) {
-    setTimeout(() => {
-      if (confirm('인쇄를 완료하셨습니까?')) {
+    // 인쇄 창이 닫힌 뒤(인쇄·취소·이미지 오류) 완료 여부를 묻는다 —
+    // 일괄 인쇄처럼 장수가 많으면 이미지 로딩이 길어 고정 지연으로는 인쇄 전에 묻게 된다
+    const timer = window.setInterval(() => {
+      if (!printWindow.closed) return;
+      window.clearInterval(timer);
+      if (confirm(doneMessage)) {
         onPrintDone();
       }
-    }, 1000);
+    }, 500);
   }
 }
 
@@ -334,18 +344,24 @@ export default function ReceiptsMain() {
         printed_by_name: employee?.name || user.email
       };
 
-      const { error: updateError } = await supabase
-        .from('purchase_receipts')
-        .update(updateData)
-        .in('id', receiptIds);
+      for (let i = 0; i < receiptIds.length; i += PRINTED_UPDATE_CHUNK_SIZE) {
+        const { error: updateError } = await supabase
+          .from('purchase_receipts')
+          .update(updateData)
+          .in('id', receiptIds.slice(i, i + PRINTED_UPDATE_CHUNK_SIZE));
 
-      if (updateError) {
-        logger.error('영수증 인쇄완료 업데이트 실패', updateError);
-        toast.error(`업데이트 실패: ${updateError.message}`);
-        return;
+        if (updateError) {
+          logger.error('영수증 인쇄완료 업데이트 실패', updateError);
+          toast.error(`업데이트 실패: ${updateError.message}`);
+          // 앞 청크는 이미 반영됐을 수 있으므로 목록을 다시 불러와 실제 상태를 보여준다
+          loadReceipts();
+          return;
+        }
       }
 
-      toast.success('인쇄 완료로 표시되었습니다.');
+      toast.success(receiptIds.length > 1
+        ? `영수증 ${receiptIds.length}장을 인쇄 완료로 표시했습니다.`
+        : '인쇄 완료로 표시되었습니다.');
       loadReceipts();
     } catch (error) {
       const errorObj = error instanceof Error ? error : null;
@@ -367,6 +383,30 @@ export default function ReceiptsMain() {
     const receiptIds = group.receipts.map((r) => r.id);
     printReceiptImages(imageUrls, () => markGroupAsPrinted(receiptIds));
   }, [markGroupAsPrinted]);
+
+  // 현재 검색·필터 결과 중 인쇄 미완료 그룹 (표의 인쇄완료 칼럼과 같은 기준: 그룹 전체가 인쇄돼야 완료)
+  const unprintedGroups = useMemo(
+    () => displayGroups.filter((g) => !g.receipts.every((r) => !!r.is_printed)),
+    [displayGroups]
+  );
+
+  const handlePrintUnprinted = useCallback(() => {
+    const targets = unprintedGroups.flatMap((g) => g.receipts);
+    const imageUrls = targets
+      .filter((r) => r.receipt_image_url)
+      .map((r) => r.receipt_image_url);
+
+    if (imageUrls.length === 0) {
+      toast.error('인쇄할 영수증 이미지가 없습니다.');
+      return;
+    }
+
+    printReceiptImages(
+      imageUrls,
+      () => markGroupAsPrinted(targets.map((r) => r.id)),
+      `미인쇄 영수증 ${unprintedGroups.length}건(${imageUrls.length}장) 인쇄를 완료하셨습니까?\n확인을 누르면 모두 인쇄완료로 표시됩니다.`
+    );
+  }, [unprintedGroups, markGroupAsPrinted]);
 
   const handleDownloadReceipt = useCallback(async (receipt: ReceiptItem) => {
     if (!receipt.receipt_image_url) {
@@ -564,6 +604,20 @@ export default function ReceiptsMain() {
                   ? `${allRows.length}건`
                   : `${displayRows.length} / ${allRows.length}건`}
               </span>
+              <button
+                type="button"
+                onClick={handlePrintUnprinted}
+                disabled={unprintedGroups.length === 0}
+                title={unprintedGroups.length === 0
+                  ? '현재 목록에 인쇄 미완료 영수증이 없습니다.'
+                  : '현재 검색·필터 결과 중 인쇄 미완료 영수증을 한 번에 인쇄합니다.'}
+                className="hansl-btn-primary ml-auto disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <Printer className="w-3.5 h-3.5" />
+                <span className="button-text text-white">
+                  미인쇄 일괄 인쇄{unprintedGroups.length > 0 ? ` (${unprintedGroups.length}건)` : ''}
+                </span>
+              </button>
             </div>
             {displayRows.length === 0 ? (
               <div className="text-center py-12 px-16">
