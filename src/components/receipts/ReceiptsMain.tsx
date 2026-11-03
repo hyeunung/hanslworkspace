@@ -175,7 +175,8 @@ export default function ReceiptsMain() {
             payment_date,
             quantity,
             unit_price,
-            total_amount
+            total_amount,
+            currency
           )
         `)
         .in('source_receipt_id', idChunk)
@@ -197,9 +198,10 @@ export default function ReceiptsMain() {
         quantity?: number | null;
         unitPrice?: number | null;
         totalAmount?: number | null;
+        currency?: string | null;
       }>();
 
-      ocrJobs.forEach((job: { source_receipt_id?: number | null; status?: string; receipt_ocr_results?: Array<{ merchant_name?: string | null; item_name?: string | null; payment_date?: string | null; quantity?: number | null; unit_price?: number | null; total_amount?: number | null }> | { merchant_name?: string | null; item_name?: string | null; payment_date?: string | null; quantity?: number | null; unit_price?: number | null; total_amount?: number | null } | null }) => {
+      ocrJobs.forEach((job: { source_receipt_id?: number | null; status?: string; receipt_ocr_results?: Array<{ merchant_name?: string | null; item_name?: string | null; payment_date?: string | null; quantity?: number | null; unit_price?: number | null; total_amount?: number | null; currency?: string | null }> | { merchant_name?: string | null; item_name?: string | null; payment_date?: string | null; quantity?: number | null; unit_price?: number | null; total_amount?: number | null; currency?: string | null } | null }) => {
         const sourceId = String(job.source_receipt_id || '');
         if (!sourceId || ocrByReceiptId.has(sourceId)) return;
         const result = Array.isArray(job.receipt_ocr_results)
@@ -213,6 +215,7 @@ export default function ReceiptsMain() {
           quantity: result?.quantity ?? null,
           unitPrice: result?.unit_price ?? null,
           totalAmount: result?.total_amount ?? null,
+          currency: result?.currency ?? null,
         });
       });
 
@@ -228,6 +231,7 @@ export default function ReceiptsMain() {
           ocr_quantity: ocr.quantity,
           ocr_unit_price: ocr.unitPrice,
           ocr_total_amount: ocr.totalAmount,
+          ocr_currency: ocr.currency,
         };
       });
 

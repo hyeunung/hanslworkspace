@@ -22,6 +22,7 @@ export interface ReceiptItem {
   ocr_quantity?: number | null;
   ocr_unit_price?: number | null;
   ocr_total_amount?: number | null;
+  ocr_currency?: string | null;
 }
 
 export interface ReceiptGroup {

@@ -25,6 +25,7 @@ export interface ReceiptOcrResult {
   quantity?: number | null;
   unit_price?: number | null;
   total_amount?: number | null;
+  currency?: string | null;
   confidence?: "low" | "med" | "high" | null;
   raw_json?: Record<string, unknown> | null;
   created_at: string;
