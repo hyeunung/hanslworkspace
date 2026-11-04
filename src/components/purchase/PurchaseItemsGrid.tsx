@@ -194,7 +194,7 @@ export default function PurchaseItemsGrid({
               </th>
               {showLink && <th className="hansl-th" style={{ minWidth: COL_META.link.minWidth }}>링크</th>}
               <th className="hansl-th" style={{ minWidth: COL_META.remark.minWidth }}>비고</th>
-              <th className="hansl-th" style={{ minWidth: COL_META.usage_purpose.minWidth }} title="무엇에 쓰는지, 어느 설비·현장에 쓰는지 (프로젝트는 요청정보의 PJ명에 기재)">
+              <th className="hansl-th" style={{ minWidth: COL_META.usage_purpose.minWidth }} title="무엇에 쓰는지, 어느 설비·현장에 쓰는지 (프로젝트는 요청정보의 PROJECT에 기재)">
                 사용목적 및 사용처<span className="text-red-500">*</span>
               </th>
               <th className="hansl-th text-center" style={{ width: 26, minWidth: 26 }}>삭제</th>

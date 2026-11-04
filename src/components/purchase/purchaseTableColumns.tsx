@@ -261,7 +261,7 @@ const linkCol: PurchaseColumnDef = {
   itemFitText: (item) => (item.link ? '링크 보기' : '-'),
 }
 const projectName: PurchaseColumnDef = {
-  id: 'project_name', visibilityKey: 'project_name', label: 'PJ명', width: 140, align: 'left',
+  id: 'project_name', visibilityKey: 'project_name', label: 'PROJECT', width: 140, align: 'left',
   render: (p) => <TextCell value={p.project_name} />,
   fitText: (p) => p.project_name || '-',
   fitMax: 240,

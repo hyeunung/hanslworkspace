@@ -102,6 +102,8 @@ const buildDefaultFormValues = (requesterName: string, poTemplateType: string): 
 // 새 요청 작성 중 임시 저장 - 탭 이동 후 복귀해도 발주요청/초기화 전까지는 유지
 const PURCHASE_DRAFT_KEY_PREFIX = 'purchase_new_draft_';
 const PURCHASE_DRAFT_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+// 새요청 PROJECT 입력 안내 '다시 보지 않기' 저장 키
+const PROJECT_HINT_DISMISS_KEY = 'hansl_purchase_project_hint_dismissed_v1';
 
 export default function PurchaseNewMain() {
   const navigate = useNavigate();
@@ -542,12 +544,12 @@ export default function PurchaseNewMain() {
     update(index, { ...item, amount_value: amount });
   };
 
-  // 제작현황의 PJ명 — 같은 제작번호로 묶인 행 중 PJ명이 적힌 첫 행 기준
+  // 제작현황의 PROJECT — 같은 제작번호로 묶인 행 중 PROJECT가 적힌 첫 행 기준
   const productionProjectNameOf = (orderNo: string | null | undefined): string =>
     (orderNo && productionOrders.find(p => p.sales_order_number === orderNo && p.project_name.trim())?.project_name.trim()) || '';
 
-  // 수주번호 변경 시 제작현황 값으로 PJ업체·Item·PJ명 자동 입력.
-  // PJ업체·Item은 읽기 전용이라 매칭이 없으면 비우고, PJ명은 제작현황에서 채워 넣었던 값만 비운다(직접 쓴 값은 유지).
+  // 수주번호 변경 시 제작현황 값으로 PJ업체·Item·PROJECT 자동 입력.
+  // PJ업체·Item은 읽기 전용이라 매칭이 없으면 비우고, PROJECT는 제작현황에서 채워 넣었던 값만 비운다(직접 쓴 값은 유지).
   const applySalesOrderNumber = (orderNo: string) => {
     const prevLinkedName = productionProjectNameOf(watch('sales_order_number'));
     setValue('sales_order_number', orderNo);
@@ -1171,6 +1173,27 @@ export default function PurchaseNewMain() {
     : productionOrders;
   // 보드 선택 + 연동 수주번호 2개 이상 → 수주번호 선택 필수
   // PJ업체·Item은 수주번호 선택 시 자동 입력되는 읽기 전용 칸 — 클릭하면 수주번호를 먼저 선택하라는 말풍선을 잠깐 띄운다
+  // PROJECT 입력칸 첫 클릭 시 수주번호 연동 안내 — 화면 진입당 1회, '다시 보지 않기'면 이 브라우저에서 영구 미표시
+  const [projectHintOpen, setProjectHintOpen] = useState(false);
+  const projectHintShownRef = useRef(false);
+  const handleProjectNameFocus = () => {
+    if (projectHintShownRef.current) return;
+    projectHintShownRef.current = true;
+    try {
+      if (localStorage.getItem(PROJECT_HINT_DISMISS_KEY) === 'true') return;
+    } catch {
+      // localStorage 접근 불가(사생활 보호 모드 등) 시에도 안내는 보여준다
+    }
+    setProjectHintOpen(true);
+  };
+  const dismissProjectHintForever = () => {
+    try {
+      localStorage.setItem(PROJECT_HINT_DISMISS_KEY, 'true');
+    } catch {
+      // 저장 실패 시 이번 화면에서만 닫힘
+    }
+    setProjectHintOpen(false);
+  };
   const [autoFillHintField, setAutoFillHintField] = useState<'project_vendor' | 'project_item' | null>(null);
   const autoFillHintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => () => { if (autoFillHintTimerRef.current) clearTimeout(autoFillHintTimerRef.current); }, []);
@@ -1656,20 +1679,20 @@ export default function PurchaseNewMain() {
                 </div>
               </div>
 
-              {/* 프로젝트 정보 — 1행: PJ명·수주번호·PJ업체 / 2행: Item (PJ업체·Item은 수주번호 선택 시 자동 입력) */}
+              {/* 프로젝트 정보 — 1행: PROJECT·수주번호·PJ업체 / 2행: Item (PJ업체·Item은 수주번호 선택 시 자동 입력) */}
               <TooltipProvider>
               <div className="space-y-1.5 sm:space-y-2">
                 <div className="grid grid-cols-3 gap-1.5 sm:gap-2">
                   <div>
-                    <Label className="mb-0.5 block text-[10px] sm:text-xs">PJ명<span className="text-red-500 ml-0.5">*</span></Label>
+                    <Label className="mb-0.5 block text-[10px] sm:text-xs">PROJECT<span className="text-red-500 ml-0.5">*</span></Label>
                     {linkedProjectName ? (
-                      // 제작현황에 PJ명이 있는 수주번호를 고르면 그 값으로 고정 (수주번호를 바꾸거나 지우면 해제)
+                      // 제작현황에 PROJECT가 있는 수주번호를 고르면 그 값으로 고정 (수주번호를 바꾸거나 지우면 해제)
                       <Input
                         type="text"
                         readOnly
                         tabIndex={-1}
                         value={linkedProjectName}
-                        title="제작현황의 PJ명이 자동 입력되었습니다"
+                        title="제작현황의 PROJECT가 자동 입력되었습니다"
                         className="h-7 bg-gray-50 border border-[#d2d2d7] rounded-md text-xs text-gray-600 shadow-sm cursor-not-allowed focus-visible:ring-0"
                       />
                     ) : (
@@ -1677,6 +1700,7 @@ export default function PurchaseNewMain() {
                         type="text" 
                         value={watch('project_name') || ''} 
                         onChange={(e) => setValue('project_name', e.target.value)} 
+                        onFocus={handleProjectNameFocus}
                         placeholder="PROJECT명 입력"
                         className="h-7 bg-white border border-[#d2d2d7] rounded-md text-xs shadow-sm hover:shadow-md focus:shadow-md transition-shadow duration-200"
                       />
@@ -1688,7 +1712,7 @@ export default function PurchaseNewMain() {
                       options={salesOrderOptions}
                       value={watch('sales_order_number') ? { value: watch('sales_order_number'), label: watch('sales_order_number') } : null}
                       onChange={(selected) => {
-                        // 선택한 수주번호가 제작현황 목록에 있으면 PJ명·PJ업체·Item을 자동 입력
+                        // 선택한 수주번호가 제작현황 목록에 있으면 PROJECT·PJ업체·Item을 자동 입력
                         applySalesOrderNumber(selected?.value || '');
                       }}
                       placeholder="선택/입력"
@@ -2112,6 +2136,31 @@ export default function PurchaseNewMain() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* PROJECT 입력 안내 — 수주번호 선택 시 제작현황 프로젝트명 자동 기입, 없으면 수동 입력 */}
+      <AlertDialog open={projectHintOpen} onOpenChange={setProjectHintOpen}>
+        <AlertDialogContent className="sm:max-w-[400px]">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="modal-title">PROJECT 입력 안내</AlertDialogTitle>
+            <AlertDialogDescription className="whitespace-normal text-[12px] text-gray-600">
+              수주번호를 입력하시면 제작현황과 연동되어 자동으로 프로젝트명이 기입됩니다.
+              <br />
+              제작현황에 없는경우 수동입력 부탁드립니다.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={dismissProjectHintForever} className="button-base">
+              다시 보지 않기
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => setProjectHintOpen(false)}
+              className="button-base bg-hansl-600 hover:bg-hansl-700 text-white"
+            >
+              확인
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog open={successDialogOpen} onOpenChange={setSuccessDialogOpen}>
         <AlertDialogContent className="sm:max-w-[360px]">

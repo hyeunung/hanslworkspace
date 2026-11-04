@@ -6,7 +6,7 @@ export interface ProductionPcb {
   id: string
   sales_order_number: string
   production_category: string // 'PCB' | 'Socket Board' | '기타'
-  project_name?: string | null // PJ명 — 새요청 수주번호 선택 시 발주 PJ명으로 연동
+  project_name?: string | null // PROJECT — 새요청 수주번호 선택 시 발주 PROJECT로 연동
   board_name: string
   request_date: string
   estimate_no?: string
@@ -63,7 +63,7 @@ export interface ProductionCable {
   id: string
   sales_order_number: string
   production_category: string // 'Cable' | 'Case' | '기타'
-  project_name?: string | null // PJ명 — 새요청 수주번호 선택 시 발주 PJ명으로 연동
+  project_name?: string | null // PROJECT — 새요청 수주번호 선택 시 발주 PROJECT로 연동
   board_name: string
   request_date: string
   estimate_no?: string

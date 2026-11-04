@@ -6277,7 +6277,7 @@ ${itemsText}`
 
                   <div className="grid grid-cols-1 sm:flex sm:gap-8">
                     <div className="w-full sm:w-72">
-                      <span className="modal-label">PJ명</span>
+                      <span className="modal-label">PROJECT</span>
                       {isEditing ? (
                         <Input
                           value={editedPurchase?.project_name || ''}

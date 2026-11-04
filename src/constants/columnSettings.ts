@@ -123,7 +123,7 @@ export const DONE_TAB_COLUMNS: ColumnInfo[] = [
   },
   {
     id: 'project_name',
-    label: 'PJ명',
+    label: 'PROJECT',
     description: 'PROJECT명',
     defaultVisible: true,
   },
