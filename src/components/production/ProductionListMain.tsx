@@ -1380,7 +1380,7 @@ export default function ProductionListMain() {
   const handleSavePcbInline = async () => {
     if (addingPcbRows.length === 0) return
     if (addingPcbRows.some(r => !r.project_name?.trim())) {
-      toast.error(addingPcbRows.length > 1 ? '모든 행의 PJ명을 입력해 주세요.' : 'PJ명을 입력해 주세요.')
+      toast.error(addingPcbRows.length > 1 ? '모든 행의 PROJECT를 입력해 주세요.' : 'PROJECT를 입력해 주세요.')
       return
     }
     if (addingPcbRows.some(r => !r.board_name)) {
@@ -1453,7 +1453,7 @@ export default function ProductionListMain() {
   const handleSaveCableInline = async () => {
     if (addingCableRows.length === 0) return
     if (addingCableRows.some(r => !r.project_name?.trim())) {
-      toast.error(addingCableRows.length > 1 ? '모든 행의 PJ명을 입력해 주세요.' : 'PJ명을 입력해 주세요.')
+      toast.error(addingCableRows.length > 1 ? '모든 행의 PROJECT를 입력해 주세요.' : 'PROJECT를 입력해 주세요.')
       return
     }
     if (addingCableRows.some(r => !r.board_name)) {
@@ -2215,7 +2215,7 @@ export default function ProductionListMain() {
       // 고정(sticky) 칼럼: 헤더가 하드코딩되어 있어 여기서도 실제 헤더 문구와 일치시켜야
       // 데이터가 없을 때(본문 실측값이 없을 때) 칼럼 폭이 헤더 제목에 딱 맞게 계산됨
       case 'production_category': return '제작구분'
-      case 'project_name': return 'PJ명'
+      case 'project_name': return 'PROJECT'
       case 'board_name': return type === 'cable' ? '품명' : '보드명'
       case 'request_date': return '요청일'
       case 'estimate_no': return '견적NO.'
@@ -2499,7 +2499,7 @@ export default function ProductionListMain() {
     // 평균 데이터 기반 최소 폭(바닥값)은 "표에 데이터가 하나도 없을 때"만 적용해 입력 여유 공간을 확보한다.
     // 표에 데이터가 있으면 각 칼럼을 헤더/실제 데이터 폭에 맞춰 핏하게 축소 (빈 칼럼은 헤더 크기로 줄어듦).
     let floor = list.length === 0 ? (MIN_COLUMN_WIDTH[type][field] ?? 0) : 0
-    // PJ명은 기존 행 대부분이 비어 있어 헤더 폭으로 줄어드므로, 행 추가 중에는 입력 칸 폭을 확보한다
+    // PROJECT는 기존 행 대부분이 비어 있어 헤더 폭으로 줄어드므로, 행 추가 중에는 입력 칸 폭을 확보한다
     if (field === 'project_name' && addingRows.length > 0) floor = Math.max(floor, MIN_COLUMN_WIDTH[type][field] ?? 0)
     return Math.ceil(Math.max(contentWidth, floor))
   }
@@ -4022,7 +4022,7 @@ export default function ProductionListMain() {
     e.preventDefault()
     
     if (!formFields.project_name?.trim()) {
-      toast.error('PJ명을 입력해 주세요.')
+      toast.error('PROJECT를 입력해 주세요.')
       return
     }
     if (!formFields.board_name) {
@@ -5022,7 +5022,7 @@ export default function ProductionListMain() {
                     <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 text-center sticky left-0 bg-gray-50 z-30 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]" style={{ zIndex: 40, width: '40px', minWidth: '40px', maxWidth: '40px' }}>NO.</th>
                     <th rowSpan={2} className="hansl-th-sticky" style={getStickyHeaderStyle('pcb', 'sales_order_number')}>제작 번호</th>
                     <th rowSpan={2} className="hansl-th-sticky" style={getStickyHeaderStyle('pcb', 'production_category')}>제작구분</th>
-                    <th rowSpan={2} className="hansl-th-sticky text-center" style={getStickyHeaderStyle('pcb', 'project_name')}>PJ명</th>
+                    <th rowSpan={2} className="hansl-th-sticky text-center" style={getStickyHeaderStyle('pcb', 'project_name')}>PROJECT</th>
                     <th rowSpan={2} className="hansl-th-sticky text-center" style={getStickyHeaderStyle('pcb', 'board_name')}>보드명</th>
                     <th rowSpan={2} className="hansl-th-sticky text-center" style={getStickyHeaderStyle('pcb', 'reference')}>참고</th>
                     <th rowSpan={2} className="hansl-th-sticky" style={getStickyHeaderStyle('pcb', 'request_date')}>요청일</th>
@@ -5113,7 +5113,7 @@ export default function ProductionListMain() {
                           type="text"
                           value={addingPcbRow.project_name || ''}
                           onChange={(e) => setAddingPcbRow({ ...addingPcbRow, project_name: e.target.value })}
-                          placeholder="PJ명*"
+                          placeholder="프로젝트명*"
                           className="w-full bg-white border border-gray-300 rounded px-1.5 py-0.5 text-[10px] focus:outline-none align-left"
                         />
                       </td>
@@ -5664,7 +5664,7 @@ export default function ProductionListMain() {
                     <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 text-center sticky left-0 bg-gray-50 z-30 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]" style={{ zIndex: 40, width: '40px', minWidth: '40px', maxWidth: '40px' }}>NO.</th>
                     <th rowSpan={2} className="hansl-th-sticky" style={getStickyHeaderStyle('cable', 'sales_order_number')}>제작 번호</th>
                     <th rowSpan={2} className="hansl-th-sticky" style={getStickyHeaderStyle('cable', 'production_category')}>제작구분</th>
-                    <th rowSpan={2} className="hansl-th-sticky text-center" style={getStickyHeaderStyle('cable', 'project_name')}>PJ명</th>
+                    <th rowSpan={2} className="hansl-th-sticky text-center" style={getStickyHeaderStyle('cable', 'project_name')}>PROJECT</th>
                     <th rowSpan={2} className="hansl-th-sticky text-center" style={getStickyHeaderStyle('cable', 'board_name')}>품명</th>
                     <th rowSpan={2} className="hansl-th-sticky text-center" style={getStickyHeaderStyle('cable', 'reference')}>참고</th>
                     <th rowSpan={2} className="hansl-th-sticky" style={getStickyHeaderStyle('cable', 'request_date')}>요청일</th>
@@ -5733,7 +5733,7 @@ export default function ProductionListMain() {
                           type="text"
                           value={addingCableRow.project_name || ''}
                           onChange={(e) => setAddingCableRow({ ...addingCableRow, project_name: e.target.value })}
-                          placeholder="PJ명*"
+                          placeholder="프로젝트명*"
                           className="w-full bg-white border border-gray-300 rounded px-1.5 py-0.5 text-[10px] focus:outline-none align-left"
                         />
                       </td>
@@ -6018,14 +6018,14 @@ export default function ProductionListMain() {
                   </select>
                 </div>
 
-                {/* PJ명 */}
+                {/* PROJECT */}
                 <div className="col-span-2">
-                  <label className="modal-label mb-1 block">PJ명 (PROJECT명) *</label>
+                  <label className="modal-label mb-1 block">PROJECT *</label>
                   <input
                     type="text"
                     value={formFields.project_name || ''}
                     onChange={(e) => setFormFields({ ...formFields, project_name: e.target.value })}
-                    placeholder="PROJECT명 입력"
+                    placeholder="프로젝트명 입력"
                     className="hansl-form-input px-2.5"
                     required
                   />
