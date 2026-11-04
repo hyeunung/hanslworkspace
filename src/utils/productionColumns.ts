@@ -17,6 +17,7 @@ export const MIN_COLUMN_WIDTH: Record<'pcb' | 'cable', Record<string, number>> =
   pcb: {
     sales_order_number: 80,
     production_category: 96,
+    project_name: 90,
     board_name: 200, // 평균 193px
     reference: 165, // 평균 159px
     request_date: 60,
@@ -56,6 +57,7 @@ export const MIN_COLUMN_WIDTH: Record<'pcb' | 'cable', Record<string, number>> =
   cable: {
     sales_order_number: 80,
     production_category: 74,
+    project_name: 90,
     board_name: 145, // 품명 평균 116px
     reference: 60,
     request_date: 60,
@@ -105,7 +107,7 @@ export const measureText = (rawText: string, weight: number, letterSpacing: numb
 }
 
 // 좌측 고정(sticky) 칼럼: 구분선을 border 대신 box-shadow로 그려서 보더 폭 보정이 불필요
-export const STICKY_FIELDS = ['sales_order_number', 'production_category', 'board_name', 'reference', 'request_date']
+export const STICKY_FIELDS = ['sales_order_number', 'production_category', 'project_name', 'board_name', 'reference', 'request_date']
 
 // ─── 칼럼 숨기기 ─────────────────────────────────────────────────────
 // NO./작업은 행 식별·조작용이라 항상 표시하되, 좌측 고정 칼럼(제작번호~요청일)과
@@ -117,7 +119,7 @@ export const HIDEABLE_SECTIONS: Record<'pcb' | 'cable', HideableSection[]> = {
     {
       title: '기본정보 (좌측고정)',
       groups: [
-        { title: '기본정보', fields: ['sales_order_number', 'production_category', 'board_name', 'reference', 'request_date'] },
+        { title: '기본정보', fields: ['sales_order_number', 'production_category', 'project_name', 'board_name', 'reference', 'request_date'] },
       ],
     },
     {
@@ -149,7 +151,7 @@ export const HIDEABLE_SECTIONS: Record<'pcb' | 'cable', HideableSection[]> = {
     {
       title: '기본정보 (좌측고정)',
       groups: [
-        { title: '기본정보', fields: ['sales_order_number', 'production_category', 'board_name', 'reference', 'request_date'] },
+        { title: '기본정보', fields: ['sales_order_number', 'production_category', 'project_name', 'board_name', 'reference', 'request_date'] },
       ],
     },
     {
@@ -250,7 +252,7 @@ export const BULK_VALUE_EDITABLE = new Set<string>([
   'revision_count', 'quantity', 'stock_count', 'received_quantity', 'delivery_quantity',
   // 메모/텍스트
   ...MEMO_TEXT_FIELDS,
-  'board_name', 'client_name', 'pcb_vendor', 'client_manager', 'hansl_manager', 'metal_mask', 'estimate_no', 'sales_order_number',
+  'project_name', 'board_name', 'client_name', 'pcb_vendor', 'client_manager', 'hansl_manager', 'metal_mask', 'estimate_no', 'sales_order_number',
   // select / 특수 편집기
   'production_category', 'artwork_status', 'parts_organization',
 ])
