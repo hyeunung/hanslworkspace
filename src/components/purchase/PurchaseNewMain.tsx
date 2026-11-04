@@ -247,7 +247,7 @@ export default function PurchaseNewMain() {
   
   // 전체복사 버튼 상태
   const [isCopied, setIsCopied] = useState(false);
-  const [productionOrders, setProductionOrders] = useState<Array<{ sales_order_number: string; board_name: string; client_name: string; created_at: string }>>([]);
+  const [productionOrders, setProductionOrders] = useState<Array<{ sales_order_number: string; board_name: string; client_name: string; project_name: string; created_at: string }>>([]);
 
   const { control, handleSubmit: rhHandleSubmit, watch, setValue, reset, getValues } = useFormRH<FormValues>({
     defaultValues: buildDefaultFormValues("", "")
@@ -445,7 +445,7 @@ export default function PurchaseNewMain() {
       try {
         const fetchOrders = (table: 'production_pcbs' | 'production_cables') => fetchAllPages<any>((from, to) => supabase
           .from(table)
-          .select('sales_order_number, board_name, client_name, created_at')
+          .select('sales_order_number, board_name, client_name, project_name, created_at')
           .is('deleted_at', null)
           .order('created_at', { ascending: false })
           .order('id', { ascending: false })
@@ -453,7 +453,7 @@ export default function PurchaseNewMain() {
         const [pcbRows, cableRows] = await Promise.all([fetchOrders('production_pcbs'), fetchOrders('production_cables')]);
 
         const combined = [...pcbRows, ...cableRows]
-          .map((r: any) => ({ sales_order_number: r.sales_order_number, board_name: r.board_name, client_name: r.client_name || '', created_at: r.created_at }))
+          .map((r: any) => ({ sales_order_number: r.sales_order_number, board_name: r.board_name, client_name: r.client_name || '', project_name: r.project_name || '', created_at: r.created_at }))
           .sort((a, b) => b.created_at.localeCompare(a.created_at));
 
         setProductionOrders(combined);
@@ -542,6 +542,23 @@ export default function PurchaseNewMain() {
     update(index, { ...item, amount_value: amount });
   };
 
+  // 제작현황의 PJ명 — 같은 제작번호로 묶인 행 중 PJ명이 적힌 첫 행 기준
+  const productionProjectNameOf = (orderNo: string | null | undefined): string =>
+    (orderNo && productionOrders.find(p => p.sales_order_number === orderNo && p.project_name.trim())?.project_name.trim()) || '';
+
+  // 수주번호 변경 시 제작현황 값으로 PJ업체·Item·PJ명 자동 입력.
+  // PJ업체·Item은 읽기 전용이라 매칭이 없으면 비우고, PJ명은 제작현황에서 채워 넣었던 값만 비운다(직접 쓴 값은 유지).
+  const applySalesOrderNumber = (orderNo: string) => {
+    const prevLinkedName = productionProjectNameOf(watch('sales_order_number'));
+    setValue('sales_order_number', orderNo);
+    const matched = productionOrders.find(p => p.sales_order_number === orderNo);
+    setValue('project_item', matched?.board_name || '');
+    setValue('project_vendor', matched?.client_name || '');
+    const linkedName = productionProjectNameOf(orderNo);
+    if (linkedName) setValue('project_name', linkedName);
+    else if (prevLinkedName) setValue('project_name', '');
+  };
+
   // 보드 선택 시 품목 자동 채우기 핸들러
   const handleBoardSelect = async (selected: { value: string; label: string; boardName?: string; salesOrderNumber?: string | null } | null) => {
     setSelectedBoard(selected);
@@ -559,16 +576,9 @@ export default function PurchaseNewMain() {
           .map(p => p.sales_order_number)
       ));
       if (linked.length === 1) {
-        setValue('sales_order_number', linked[0]);
-        const matched = productionOrders.find(p => p.sales_order_number === linked[0]);
-        if (matched) {
-          setValue('project_item', matched.board_name);
-          if (matched.client_name) setValue('project_vendor', matched.client_name);
-        }
+        applySalesOrderNumber(linked[0]);
       } else if (!linked.includes(watch('sales_order_number') || '')) {
-        setValue('sales_order_number', '');
-        setValue('project_item', '');
-        setValue('project_vendor', '');
+        applySalesOrderNumber('');
       }
     }
 
@@ -1186,6 +1196,8 @@ export default function PurchaseNewMain() {
     </Tooltip>
   );
 
+  const linkedProjectName = productionProjectNameOf(watch('sales_order_number'));
+
   const salesOrderRequired = !!selectedBoard
     && new Set(boardLinkedOrders.map(p => p.sales_order_number)).size >= 2;
   const salesOrderOptions = Array.from(
@@ -1650,13 +1662,25 @@ export default function PurchaseNewMain() {
                 <div className="grid grid-cols-3 gap-1.5 sm:gap-2">
                   <div>
                     <Label className="mb-0.5 block text-[10px] sm:text-xs">PJ명<span className="text-red-500 ml-0.5">*</span></Label>
-                    <Input 
-                      type="text" 
-                      value={watch('project_name') || ''} 
-                      onChange={(e) => setValue('project_name', e.target.value)} 
-                      placeholder="PROJECT명 입력"
-                      className="h-7 bg-white border border-[#d2d2d7] rounded-md text-xs shadow-sm hover:shadow-md focus:shadow-md transition-shadow duration-200"
-                    />
+                    {linkedProjectName ? (
+                      // 제작현황에 PJ명이 있는 수주번호를 고르면 그 값으로 고정 (수주번호를 바꾸거나 지우면 해제)
+                      <Input
+                        type="text"
+                        readOnly
+                        tabIndex={-1}
+                        value={linkedProjectName}
+                        title="제작현황의 PJ명이 자동 입력되었습니다"
+                        className="h-7 bg-gray-50 border border-[#d2d2d7] rounded-md text-xs text-gray-600 shadow-sm cursor-not-allowed focus-visible:ring-0"
+                      />
+                    ) : (
+                      <Input 
+                        type="text" 
+                        value={watch('project_name') || ''} 
+                        onChange={(e) => setValue('project_name', e.target.value)} 
+                        placeholder="PROJECT명 입력"
+                        className="h-7 bg-white border border-[#d2d2d7] rounded-md text-xs shadow-sm hover:shadow-md focus:shadow-md transition-shadow duration-200"
+                      />
+                    )}
                   </div>
                   <div>
                     <Label className="mb-0.5 block text-[10px] sm:text-xs">수주번호{salesOrderRequired && <span className="text-red-500 ml-0.5">*</span>}</Label>
@@ -1664,14 +1688,8 @@ export default function PurchaseNewMain() {
                       options={salesOrderOptions}
                       value={watch('sales_order_number') ? { value: watch('sales_order_number'), label: watch('sales_order_number') } : null}
                       onChange={(selected) => {
-                        const val = selected?.value || '';
-                        setValue('sales_order_number', val);
-
-                        // 선택한 수주번호가 제작현황 목록에 존재하면 PJ업체와 Item을 자동 매핑
-                        // (두 칸은 읽기 전용이라, 매칭이 없거나 선택을 지우면 이전 값이 남지 않게 비운다)
-                        const matched = productionOrders.find(p => p.sales_order_number === val);
-                        setValue('project_item', matched?.board_name || '');
-                        setValue('project_vendor', matched?.client_name || '');
+                        // 선택한 수주번호가 제작현황 목록에 있으면 PJ명·PJ업체·Item을 자동 입력
+                        applySalesOrderNumber(selected?.value || '');
                       }}
                       placeholder="선택/입력"
                       isClearable
