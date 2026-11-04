@@ -144,6 +144,7 @@ export interface PurchaseRequestItem {
   amount_currency?: string
   tax_amount_value?: number
   remark?: string
+  usage_purpose?: string | null  // 사용목적 및 사용처
   link?: string
   vendor_name?: string
   is_received: boolean
@@ -241,7 +242,7 @@ export interface PurchaseRequestWithDetails extends PurchaseRequest {
   delivery_request_date?: string  // alias for desired_delivery_date
   desired_delivery_date?: string  // actual DB column
   progress_type?: string
-  project_vendor?: string  // alias for project_name
+  project_vendor?: string
   project_item?: string
   sales_order_number?: string
   is_payment_completed?: boolean
@@ -285,6 +286,7 @@ export interface FormItem {
   amount_currency: string
   remark: string
   link?: string
+  usage_purpose?: string  // 사용목적 및 사용처
 }
 
 export interface FormValues {
@@ -292,6 +294,7 @@ export interface FormValues {
   contact_id?: number
   contacts: string[]
   sales_order_number: string
+  project_name: string
   project_vendor: string
   project_item: string
   delivery_request_date: string
@@ -378,6 +381,7 @@ export interface Purchase {
   payment_completed_by_name?: string;
   is_utk_checked: boolean;
   is_statement_received: boolean;
+  project_name?: string | null;
   project_vendor?: string;
   sales_order_number?: string;
   project_item?: string;

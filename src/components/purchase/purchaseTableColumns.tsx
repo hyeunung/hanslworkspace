@@ -26,7 +26,7 @@ export interface PurchaseCellCtx {
 
 // 인풋 모드에서 인라인 편집을 허용하는 품목 필드
 export type PurchaseItemEditField =
-  | 'item_name' | 'specification' | 'quantity' | 'unit_price_value' | 'amount_value' | 'remark'
+  | 'item_name' | 'specification' | 'quantity' | 'unit_price_value' | 'amount_value' | 'remark' | 'usage_purpose'
 
 export interface PurchaseColumnDef {
   id: string
@@ -243,6 +243,15 @@ const remark: PurchaseColumnDef = {
   itemFitText: (item) => item.remark || '-',
   editField: 'remark', editType: 'text',
 }
+const usagePurpose: PurchaseColumnDef = {
+  id: 'usage_purpose', visibilityKey: 'usage_purpose', label: '사용목적 및 사용처', width: 165, align: 'left',
+  render: (p) => <TextCell value={p.purchase_request_items?.[0]?.usage_purpose} />,
+  fitText: (p) => p.purchase_request_items?.[0]?.usage_purpose || '-',
+  fitMax: 240,
+  itemRender: (item) => <TextCell value={item.usage_purpose} />,
+  itemFitText: (item) => item.usage_purpose || '-',
+  editField: 'usage_purpose', editType: 'text',
+}
 // 링크는 클릭=열기 동작과 충돌하므로 인풋 모드에서도 편집 대상에서 제외 (표시만 품목 단위)
 const linkCol: PurchaseColumnDef = {
   id: 'link', visibilityKey: 'link', label: '링크', width: 85, align: 'left',
@@ -250,6 +259,12 @@ const linkCol: PurchaseColumnDef = {
   fitText: (p) => (p.purchase_request_items?.[0]?.link ? '링크 보기' : '-'),
   itemRender: (item) => <ItemLinkCell item={item} />,
   itemFitText: (item) => (item.link ? '링크 보기' : '-'),
+}
+const projectName: PurchaseColumnDef = {
+  id: 'project_name', visibilityKey: 'project_name', label: 'PJ명', width: 140, align: 'left',
+  render: (p) => <TextCell value={p.project_name} />,
+  fitText: (p) => p.project_name || '-',
+  fitMax: 240,
 }
 const projectVendor: PurchaseColumnDef = {
   id: 'project_vendor', visibilityKey: 'project_vendor', label: 'PJ업체', width: 105, align: 'left',
@@ -339,21 +354,21 @@ export const purchaseColumnsForTab = (tab: string): PurchaseColumnDef[] => {
         approvalStatus, orderNumber, progressType, paymentCategory, requesterName, requestDate,
         vendorName, contactName, deliveryRequestDate, itemName, specification,
         quantityCol('요청수량', false), unitPrice, amountCol('합계'),
-        remark, projectVendor, projectItem, salesOrderNumber,
+        remark, usagePurpose, projectName, projectVendor, projectItem, salesOrderNumber,
       ]
     case 'purchase':
       return [
         paymentProgressLead, orderNumber, progressType, paymentCategory, requesterName, requestDate,
         vendorName, contactName, deliveryRequestDate, itemName, specification,
         quantityCol('요청수량', false), unitPrice, amountCol('합계'),
-        remark, linkCol, projectVendor, projectItem, salesOrderNumber,
+        remark, usagePurpose, linkCol, projectName, projectVendor, projectItem, salesOrderNumber,
       ]
     case 'receipt':
       return [
         receiptProgressLead, orderNumber, progressType, paymentCategory, requesterName, requestDate,
         vendorName, contactName, deliveryRequestDate, revisedDeliveryDate, itemName, specification,
         quantityCol('수량', true), unitPrice, amountCol('합계'),
-        remark, projectVendor, projectItem, salesOrderNumber,
+        remark, usagePurpose, projectName, projectVendor, projectItem, salesOrderNumber,
       ]
     case 'done':
     default:
@@ -361,7 +376,7 @@ export const purchaseColumnsForTab = (tab: string): PurchaseColumnDef[] => {
         statementProgressLead, orderNumber, progressType, paymentCategory, requesterName, requestDate, utkStatus,
         vendorName, contactName, deliveryRequestDate, revisedDeliveryDate, itemName, specification,
         quantityCol('수량', true), unitPrice, amountCol('(총 품목)합계'),
-        remark, linkCol, projectVendor, projectItem, salesOrderNumber,
+        remark, usagePurpose, linkCol, projectName, projectVendor, projectItem, salesOrderNumber,
         paymentSchedule, purchaseProgress, receiptProgress,
       ]
   }

@@ -37,6 +37,7 @@ export const emptyFormItem = (lineNumber: number, currency: string): FormItem =>
   amount_currency: currency,
   remark: '',
   link: '',
+  usage_purpose: '',
 })
 
 const setItemField = (item: FormItem, field: string, raw: string): FormItem => {
@@ -48,6 +49,7 @@ const setItemField = (item: FormItem, field: string, raw: string): FormItem => {
   else if (field === 'specification') next.specification = v
   else if (field === 'link') next.link = v
   else if (field === 'remark') next.remark = v
+  else if (field === 'usage_purpose') next.usage_purpose = v
   next.amount_value = (Number(next.quantity) || 0) * (Number(next.unit_price_value) || 0)
   return next
 }

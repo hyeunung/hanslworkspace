@@ -112,6 +112,7 @@ type ItemAddRow = {
   unit: string
   unitPrice: string
   remark: string
+  usagePurpose: string
 }
 
 type ItemAddPayloadItem = {
@@ -121,6 +122,7 @@ type ItemAddPayloadItem = {
   unit: string
   unit_price: number
   remark?: string | null
+  usage_purpose?: string | null
 }
 
 // Extended item type used during editing with stable keys and temp IDs
@@ -316,7 +318,7 @@ function PurchaseDetailModal({
       setPriceChangeRows([{ id: createRowId(), itemId: '', changeType: 'unit_price', newValue: '' }])
     }
     if (modifyInquiryType === 'item_add' && itemAddRows.length === 0) {
-      setItemAddRows([{ id: createRowId(), itemName: '', specification: '', quantity: '', unit: 'EA', unitPrice: '', remark: '' }])
+      setItemAddRows([{ id: createRowId(), itemName: '', specification: '', quantity: '', unit: 'EA', unitPrice: '', remark: '', usagePurpose: '' }])
     }
   }, [modifyInquiryType, quantityChangeRows.length, priceChangeRows.length, itemAddRows.length])
 
@@ -697,6 +699,11 @@ function PurchaseDetailModal({
             setIsSendingModify(false)
             return
           }
+          if (!row.usagePurpose.trim()) {
+            toast.error('사용목적 및 사용처를 입력해주세요.')
+            setIsSendingModify(false)
+            return
+          }
 
           itemsPayload.push({
             item_name: row.itemName.trim(),
@@ -705,6 +712,7 @@ function PurchaseDetailModal({
             unit: row.unit.trim() || 'EA',
             unit_price: unitPrice,
             remark: row.remark.trim() || null,
+            usage_purpose: row.usagePurpose.trim(),
           })
           const amount = quantity * unitPrice
           summaryLines.push(
@@ -871,7 +879,7 @@ ${itemsText}`
   const addItemAddRow = () => {
     setItemAddRows(prev => [
       ...prev,
-      { id: createRowId(), itemName: '', specification: '', quantity: '', unit: 'EA', unitPrice: '', remark: '' }
+      { id: createRowId(), itemName: '', specification: '', quantity: '', unit: 'EA', unitPrice: '', remark: '', usagePurpose: '' }
     ])
   }
 
@@ -2180,7 +2188,8 @@ ${itemsText}`
     columnConfigs.push({ key: 'link', minWidth: 60, maxWidth: 80, baseWidth: 60, isFixed: true })
     
     columnConfigs.push(
-      { key: 'remarks', minWidth: 150, maxWidth: 150, baseWidth: 150, isFixed: true } // 고정 너비 150px
+      { key: 'remarks', minWidth: 150, maxWidth: 150, baseWidth: 150, isFixed: true }, // 고정 너비 150px
+      { key: 'usage_purpose', minWidth: 160, maxWidth: 160, baseWidth: 160, isFixed: true } // 사용목적 및 사용처
     )
     
     // pending 탭이 아닌 경우에만 상태 칼럼 추가 (편집 모드에서는 맨 우측 삭제 칼럼으로 대체)
@@ -2235,7 +2244,7 @@ ${itemsText}`
         const quantityHeader = (activeTab === 'receipt' || activeTab === 'done')
           ? '요청/실제 입고수량'
           : '요청수량'
-        const baseHeaders = ['#', '품목명', '규격', quantityHeader, '단가', '합계', purchase?.payment_category === '발주' ? '세액' : null, '비고'].filter(h => h !== null) as string[]
+        const baseHeaders = ['#', '품목명', '규격', quantityHeader, '단가', '합계', purchase?.payment_category === '발주' ? '세액' : null, '링크', '비고', '사용목적 및 사용처'].filter(h => h !== null) as string[]
         if (activeTab !== 'pending' && !editingState) {
           baseHeaders.push(statusHeader)
         }
@@ -2313,6 +2322,9 @@ ${itemsText}`
             break
           case 'remarks':
             cellValue = item.remark || ''
+            break
+          case 'usage_purpose':
+            cellValue = item.usage_purpose || ''
             break
           case 'status':
             cellValue = getStatusDisplay(item) || ''
@@ -2409,6 +2421,9 @@ ${itemsText}`
     
     // 비고 칼럼 추가
     baseColumns.push('150px')
+
+    // 사용목적 및 사용처 칼럼 추가
+    baseColumns.push('160px')
     
     // pending 탭이 아닌 경우에만 상태 칼럼 추가 (편집 모드에서는 맨 우측 삭제 칼럼으로 대체)
     if (activeTab !== 'pending' && !isEditing) {
@@ -2723,6 +2738,7 @@ ${itemsText}`
             delivery_request_date: editedPurchase.delivery_request_date || null,
             revised_delivery_request_date: editedPurchase.revised_delivery_request_date || null,
             payment_category: editedPurchase.payment_category || null,
+            project_name: editedPurchase.project_name?.trim() || null,
             project_vendor: editedPurchase.project_vendor || null,
             project_item: editedPurchase.project_item || null,
             sales_order_number: editedPurchase.sales_order_number || null,
@@ -2944,6 +2960,7 @@ ${itemsText}`
           safeNumber(item.amount_value, 0) !== safeNumber(original.amount_value, 0) ||
           currencyForSave !== (original.amount_currency || currencyForSave) ||
           (item.remark || null) !== (original.remark || null) ||
+          (item.usage_purpose?.trim() || null) !== (original.usage_purpose?.trim() || null) ||
           normalizeLinkValue(item.link) !== normalizeLinkValue(original.link) ||
           // 완전 삭제/드래그 재정렬로 라인넘버가 당겨진 품목도 저장 대상
           (item.line_number ?? null) !== (original.line_number ?? null)
@@ -3032,6 +3049,7 @@ ${itemsText}`
                 amount_value: finalAmountValue,
                 amount_currency: purchase.currency || 'KRW',
                 remark: item.remark || null,
+                usage_purpose: item.usage_purpose?.trim() || null,
                 link: item.link && String(item.link).trim() ? String(item.link).trim() : null,
                 line_number: item.line_number ?? null,
                 deleted_at: null,
@@ -3061,6 +3079,7 @@ ${itemsText}`
             amount_value: finalAmountValue,
             amount_currency: purchase.currency || 'KRW',
             remark: item.remark || null,
+            usage_purpose: item.usage_purpose?.trim() || null,
             link: item.link && String(item.link).trim() ? String(item.link).trim() : null,
             line_number: item.line_number,
             created_at: new Date().toISOString()
@@ -3145,6 +3164,7 @@ ${itemsText}`
               delivery_request_date: sourceData?.delivery_request_date || prev.delivery_request_date,
               revised_delivery_request_date: sourceData?.revised_delivery_request_date || prev.revised_delivery_request_date,
               payment_category: sourceData?.payment_category || prev.payment_category,
+              project_name: sourceData ? (sourceData.project_name?.trim() || null) : prev.project_name,
               project_vendor: sourceData?.project_vendor || prev.project_vendor,
               project_item: sourceData?.project_item || prev.project_item,
               total_amount: totalAmount,
@@ -3179,6 +3199,7 @@ ${itemsText}`
                 delivery_request_date: sourceData?.delivery_request_date || prev.delivery_request_date,
                 revised_delivery_request_date: sourceData?.revised_delivery_request_date || prev.revised_delivery_request_date,
                 payment_category: sourceData?.payment_category || prev.payment_category,
+                project_name: sourceData ? (sourceData.project_name?.trim() || null) : prev.project_name,
                 project_vendor: sourceData?.project_vendor || prev.project_vendor,
                 project_item: sourceData?.project_item || prev.project_item,
                 total_amount: totalAmount,
@@ -4869,6 +4890,32 @@ ${itemsText}`
               </div>
             )}
           </div>
+
+          {/* 사용목적 및 사용처 */}
+          <div className="min-w-0 flex justify-center items-center text-center relative overflow-visible" style={{ width: '160px', maxWidth: '160px', minWidth: '160px' }}>
+            {isRowEditing ? (
+              <Input
+                value={item.usage_purpose || ''}
+                disabled={!canEditAll && !canEditLimited}
+                onChange={(e) => handleItemChange(index, 'usage_purpose', e.target.value)}
+                onFocus={() => setFocusedInput(`usage_purpose_${index}`)}
+                onBlur={() => setFocusedInput(null)}
+                className={`modal-label border-gray-200 rounded-lg text-center w-full !px-1.5 !py-0.5 !text-[10px] focus:border-blue-400 transition-all duration-200 ${
+                  focusedInput === `usage_purpose_${index}`
+                    ? '!h-auto !min-h-[20px] !absolute !z-[9999] !bg-white !shadow-lg !left-0 !right-0 !-translate-y-1/2 !top-1/2 !whitespace-normal !text-left'
+                    : '!h-5 !truncate'
+                }`}
+                placeholder="사용목적 및 사용처"
+              />
+            ) : (
+              <div
+                className="text-[11px] text-gray-600 font-medium w-[160px] break-all leading-[1.4] line-clamp-2"
+                title={item.usage_purpose || '-'}
+              >
+                {item.usage_purpose || '-'}
+              </div>
+            )}
+          </div>
           
           {/* 상태/액션 - 승인대기탭 제외, 편집 모드에서는 맨 우측 삭제 칼럼으로 대체되므로 미표시 */}
           {activeTab !== 'pending' && !isEditing && (
@@ -5502,6 +5549,22 @@ ${itemsText}`
                   />
                 ) : (
                   <div className="modal-subtitle text-gray-500 mt-1">{item.remark || '-'}</div>
+                )}
+              </div>
+            )}
+
+            {(item.usage_purpose || isRowEditing) && (
+              <div>
+                <span className="text-gray-500 text-xs">사용목적 및 사용처:</span>
+                {isRowEditing ? (
+                  <Input
+                    value={item.usage_purpose || ''}
+                    onChange={(e) => handleItemChange(index, 'usage_purpose', e.target.value)}
+                    className="modal-label border-gray-200 rounded-lg mt-1 w-full h-5 px-1.5 py-0.5 text-[10px] focus:border-blue-400"
+                    placeholder="사용목적 및 사용처"
+                  />
+                ) : (
+                  <div className="modal-subtitle text-gray-500 mt-1">{item.usage_purpose || '-'}</div>
                 )}
               </div>
             )}
@@ -6213,6 +6276,28 @@ ${itemsText}`
                   </div>
 
                   <div className="grid grid-cols-1 sm:flex sm:gap-8">
+                    <div className="w-full sm:w-72">
+                      <span className="modal-label">PJ명</span>
+                      {isEditing ? (
+                        <Input
+                          value={editedPurchase?.project_name || ''}
+                          onChange={(e) => setEditedPurchase(prev => prev ? { ...prev, project_name: e.target.value } : null)}
+                          className="mt-1 rounded-lg border-gray-200 focus:border-blue-400 w-full h-5 px-1.5 py-0.5 text-[10px]"
+                          placeholder="PROJECT명 입력"
+                          disabled={canEditLimited && !canEditAll}
+                        />
+                      ) : (
+                        <p
+                          className="modal-value break-all whitespace-pre-wrap"
+                          style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}
+                        >
+                          {purchase.project_name || '-'}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:flex sm:gap-8">
                     <div className="w-32">
                       <span className="modal-label">PJ업체</span>
                       {isEditing ? (
@@ -6566,6 +6651,7 @@ ${itemsText}`
                         )}
                         <div className="text-center">링크</div>
                         <div className="text-center">비고</div>
+                        <div className="text-center">사용목적 및 사용처</div>
                         {activeTab !== 'pending' && (
                           <>
                             {!isEditing && (
@@ -6668,6 +6754,8 @@ ${itemsText}`
                       <div></div>
                       {/* 비고 */}
                       <div></div>
+                      {/* 사용목적 및 사용처 */}
+                      <div></div>
                       {/* 상태 - pending 탭 제외, 뷰 모드에서만 표시 (편집 모드에서는 맨 우측 삭제 칼럼으로 대체). 발주인 경우 지출총합 텍스트 표시 */}
                       {activeTab !== 'pending' && !isEditing && (
                         <div className={activeTab === 'done' && purchase.payment_category === '발주' ? "text-right flex items-center justify-end" : ""}>
@@ -6748,7 +6836,8 @@ ${itemsText}`
                         </div>
                         {/* 링크 칼럼 - 빈칸 */}
                         <div></div>
-                        {/* 나머지 빈 칸들 */}
+                        {/* 나머지 빈 칸들 (비고, 사용목적 및 사용처) */}
+                        <div></div>
                         <div></div>
                         {/* 상태 칼럼 - pending 탭 제외, 뷰 모드에서만 표시 (편집 모드에서는 맨 우측 삭제 칼럼으로 대체) */}
                         {activeTab !== 'pending' && !isEditing && <div></div>}
@@ -7349,6 +7438,15 @@ ${itemsText}`
                                   value={row.remark}
                                   onChange={(e) => updateItemAddRow(row.id, { remark: e.target.value })}
                                   placeholder="비고"
+                                  className="w-full business-radius-input h-7 !text-[11px] !leading-tight"
+                                />
+                              </div>
+                              <div className="flex-[2] min-w-0">
+                                <Input
+                                  type="text"
+                                  value={row.usagePurpose}
+                                  onChange={(e) => updateItemAddRow(row.id, { usagePurpose: e.target.value })}
+                                  placeholder="사용목적 및 사용처 *"
                                   className="w-full business-radius-input h-7 !text-[11px] !leading-tight"
                                 />
                               </div>
