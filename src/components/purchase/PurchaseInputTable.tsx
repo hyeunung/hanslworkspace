@@ -51,6 +51,7 @@ const rawEditValue = (item: PurchaseRequestItem, field: PurchaseItemEditField): 
     case 'unit_price_value': return item.unit_price_value != null ? String(item.unit_price_value) : ''
     case 'amount_value': return item.amount_value != null ? String(item.amount_value) : ''
     case 'remark': return item.remark || ''
+    case 'usage_purpose': return item.usage_purpose || ''
   }
 }
 
@@ -255,7 +256,7 @@ const PurchaseInputTable = ({
       const name = value.trim()
       if (!name) { toast.error('품목명은 필수입니다.'); return }
       updates.item_name = name
-    } else if (field === 'specification' || field === 'remark') {
+    } else if (field === 'specification' || field === 'remark' || field === 'usage_purpose') {
       updates[field] = value.trim() || null
     } else {
       // 숫자 필드 — 콤마 허용, 음수/비정상 값 방어 (상세 모달 handleSave 규칙과 동일)

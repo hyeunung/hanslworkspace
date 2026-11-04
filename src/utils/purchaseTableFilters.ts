@@ -37,6 +37,8 @@ export const PURCHASE_FILTER_FIELDS: PurchaseFilterFieldDef[] = [
   { key: 'item_name', label: '품명', type: 'text' },
   { key: 'specification', label: '규격', type: 'text' },
   { key: 'remark', label: '비고', type: 'text' },
+  { key: 'usage_purpose', label: '사용목적 및 사용처', type: 'text' },
+  { key: 'project_name', label: 'PJ명', type: 'text' },
   { key: 'project_vendor', label: 'PJ업체', type: 'text' },
   { key: 'project_item', label: 'PJ ITEM', type: 'text' },
   { key: 'sales_order_number', label: '수주번호', type: 'text' },

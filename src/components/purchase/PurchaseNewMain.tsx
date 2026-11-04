@@ -27,6 +27,7 @@ import { FormValues, FormItem } from "@/types/purchase";
 import { toast } from "sonner";
 import ReactSelect from 'react-select';
 import CreatableSelect from 'react-select/creatable';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { DatePickerPopover } from '@/components/ui/date-picker-popover';
 import { format } from 'date-fns';
 import { Calendar as CalendarIcon } from 'lucide-react';
@@ -75,6 +76,7 @@ const buildDefaultFormValues = (requesterName: string, poTemplateType: string): 
   request_type: "",
   contacts: [],
   sales_order_number: '',
+  project_name: '',
   project_vendor: '',
   project_item: '',
   delivery_request_date: '',
@@ -565,6 +567,8 @@ export default function PurchaseNewMain() {
         }
       } else if (!linked.includes(watch('sales_order_number') || '')) {
         setValue('sales_order_number', '');
+        setValue('project_item', '');
+        setValue('project_vendor', '');
       }
     }
 
@@ -680,6 +684,16 @@ export default function PurchaseNewMain() {
       if (!(requestType && progressType && paymentCategory && vendorId && vendorId !== 0 && fields.length > 0)) {
         return false;
       }
+
+      // PROJECT명 필수
+      if (!watch('project_name')?.trim()) {
+        return false;
+      }
+
+      // 품명이 입력된 품목은 사용목적 및 사용처 필수
+      if (fields.some(f => f.item_name?.trim() && !f.usage_purpose?.trim())) {
+        return false;
+      }
       
       // 결제 종류가 '발주'인 경우 입고 요청일 필수
       if (paymentCategory === '발주') {
@@ -721,6 +735,7 @@ export default function PurchaseNewMain() {
     watch('vendor_id'),
     watch('delivery_request_date'),
     watch('sales_order_number'),
+    watch('project_name'),
     selectedBoard,
     productionOrders,
     fields
@@ -823,6 +838,7 @@ export default function PurchaseNewMain() {
             requester_address: currentEmployee?.address,
             vendor_id: data.vendor_id,
             sales_order_number: data.sales_order_number,
+            project_name: data.project_name?.trim() || null,
             project_vendor: data.project_vendor,
             project_item: data.project_item,
             request_date: data.request_date,
@@ -888,6 +904,7 @@ export default function PurchaseNewMain() {
           amount_value: item.amount_value,
           amount_currency: currency,
           remark: item.remark,
+          usage_purpose: item.usage_purpose?.trim() || null,
           link: item.link || null,
         });
         if (itemErr) throw itemErr;
@@ -1143,6 +1160,32 @@ export default function PurchaseNewMain() {
     ? productionOrders.filter(p => isSameBoard(selectedBoard.boardName ?? selectedBoard.label, p.board_name))
     : productionOrders;
   // 보드 선택 + 연동 수주번호 2개 이상 → 수주번호 선택 필수
+  // PJ업체·Item은 수주번호 선택 시 자동 입력되는 읽기 전용 칸 — 클릭하면 수주번호를 먼저 선택하라는 말풍선을 잠깐 띄운다
+  const [autoFillHintField, setAutoFillHintField] = useState<'project_vendor' | 'project_item' | null>(null);
+  const autoFillHintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (autoFillHintTimerRef.current) clearTimeout(autoFillHintTimerRef.current); }, []);
+  const showAutoFillHint = (field: 'project_vendor' | 'project_item') => {
+    setAutoFillHintField(field);
+    if (autoFillHintTimerRef.current) clearTimeout(autoFillHintTimerRef.current);
+    autoFillHintTimerRef.current = setTimeout(() => setAutoFillHintField(null), 2500);
+  };
+  const renderAutoFilledProjectField = (field: 'project_vendor' | 'project_item') => (
+    <Tooltip open={autoFillHintField === field} onOpenChange={() => {}}>
+      <TooltipTrigger asChild>
+        <Input
+          type="text"
+          readOnly
+          tabIndex={-1}
+          value={watch(field) || ''}
+          onClick={() => showAutoFillHint(field)}
+          placeholder="수주번호 선택 시 자동 입력"
+          className="h-7 bg-gray-50 border border-[#d2d2d7] rounded-md text-xs text-gray-600 shadow-sm cursor-not-allowed focus-visible:ring-0"
+        />
+      </TooltipTrigger>
+      <TooltipContent side="top">수주번호를 선택하세요</TooltipContent>
+    </Tooltip>
+  );
+
   const salesOrderRequired = !!selectedBoard
     && new Set(boardLinkedOrders.map(p => p.sales_order_number)).size >= 2;
   const salesOrderOptions = Array.from(
@@ -1601,16 +1644,17 @@ export default function PurchaseNewMain() {
                 </div>
               </div>
 
-              {/* 프로젝트 정보 (제작현황 연동 및 수동 입력 통합) */}
-              <div className="space-y-3">
+              {/* 프로젝트 정보 — 1행: PJ명·수주번호·PJ업체 / 2행: Item (PJ업체·Item은 수주번호 선택 시 자동 입력) */}
+              <TooltipProvider>
+              <div className="space-y-1.5 sm:space-y-2">
                 <div className="grid grid-cols-3 gap-1.5 sm:gap-2">
                   <div>
-                    <Label className="mb-0.5 block text-[10px] sm:text-xs">PJ업체</Label>
+                    <Label className="mb-0.5 block text-[10px] sm:text-xs">PJ명<span className="text-red-500 ml-0.5">*</span></Label>
                     <Input 
                       type="text" 
-                      value={watch('project_vendor') || ''} 
-                      onChange={(e) => setValue('project_vendor', e.target.value)} 
-                      placeholder="입력"
+                      value={watch('project_name') || ''} 
+                      onChange={(e) => setValue('project_name', e.target.value)} 
+                      placeholder="PROJECT명 입력"
                       className="h-7 bg-white border border-[#d2d2d7] rounded-md text-xs shadow-sm hover:shadow-md focus:shadow-md transition-shadow duration-200"
                     />
                   </div>
@@ -1624,11 +1668,10 @@ export default function PurchaseNewMain() {
                         setValue('sales_order_number', val);
 
                         // 선택한 수주번호가 제작현황 목록에 존재하면 PJ업체와 Item을 자동 매핑
+                        // (두 칸은 읽기 전용이라, 매칭이 없거나 선택을 지우면 이전 값이 남지 않게 비운다)
                         const matched = productionOrders.find(p => p.sales_order_number === val);
-                        if (matched) {
-                          setValue('project_item', matched.board_name);
-                          if (matched.client_name) setValue('project_vendor', matched.client_name);
-                        }
+                        setValue('project_item', matched?.board_name || '');
+                        setValue('project_vendor', matched?.client_name || '');
                       }}
                       placeholder="선택/입력"
                       isClearable
@@ -1674,17 +1717,16 @@ export default function PurchaseNewMain() {
                     />
                   </div>
                   <div>
-                    <Label className="mb-0.5 block text-[10px] sm:text-xs">Item</Label>
-                    <Input 
-                      type="text" 
-                      value={watch('project_item') || ''} 
-                      onChange={(e) => setValue('project_item', e.target.value)} 
-                      placeholder="입력"
-                      className="h-7 bg-white border border-[#d2d2d7] rounded-md text-xs shadow-sm hover:shadow-md focus:shadow-md transition-shadow duration-200"
-                    />
+                    <Label className="mb-0.5 block text-[10px] sm:text-xs">PJ업체</Label>
+                    {renderAutoFilledProjectField('project_vendor')}
                   </div>
                 </div>
+                <div>
+                  <Label className="mb-0.5 block text-[10px] sm:text-xs">Item</Label>
+                  {renderAutoFilledProjectField('project_item')}
+                </div>
               </div>
+              </TooltipProvider>
             </div>
           )}
         </div>
@@ -1754,8 +1796,8 @@ export default function PurchaseNewMain() {
                     try {
                       // 품목 데이터를 TSV 형식으로 변환 (탭으로 열 구분, 줄바꿈으로 행 구분)
                       const headers = paymentCategory === "구매 요청" 
-                        ? ['품목', '규격', '수량', '단가', '합계', '링크', '비고']
-                        : ['품목', '규격', '수량', '단가', '합계', '비고'];
+                        ? ['품목', '규격', '수량', '단가', '합계', '링크', '비고', '사용목적 및 사용처']
+                        : ['품목', '규격', '수량', '단가', '합계', '비고', '사용목적 및 사용처'];
                       
                       const rows = fields.map(item => {
                         const baseRow = [
@@ -1769,7 +1811,7 @@ export default function PurchaseNewMain() {
                         if (paymentCategory === "구매 요청") {
                           baseRow.push(item.link || '');
                         }
-                        baseRow.push(item.remark || '');
+                        baseRow.push(item.remark || '', item.usage_purpose || '');
                         
                         return baseRow.join('\t');
                       });
@@ -1783,8 +1825,8 @@ export default function PurchaseNewMain() {
                       // Fallback: 구형 브라우저 대응
                       try {
                         const headers = paymentCategory === "구매 요청" 
-                          ? ['품목', '규격', '수량', '단가', '합계', '링크', '비고']
-                          : ['품목', '규격', '수량', '단가', '합계', '비고'];
+                          ? ['품목', '규격', '수량', '단가', '합계', '링크', '비고', '사용목적 및 사용처']
+                          : ['품목', '규격', '수량', '단가', '합계', '비고', '사용목적 및 사용처'];
                         
                         const rows = fields.map(item => {
                           const baseRow = [
@@ -1798,7 +1840,7 @@ export default function PurchaseNewMain() {
                           if (paymentCategory === "구매 요청") {
                             baseRow.push(item.link || '');
                           }
-                          baseRow.push(item.remark || '');
+                          baseRow.push(item.remark || '', item.usage_purpose || '');
                           
                           return baseRow.join('\t');
                         });

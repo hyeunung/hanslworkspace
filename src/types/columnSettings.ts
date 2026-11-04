@@ -24,6 +24,8 @@ export type DoneTabColumnId =
   | 'amount'                  // 합계
   | 'remark'                  // 비고
   | 'link'                    // 링크
+  | 'usage_purpose'           // 사용목적 및 사용처
+  | 'project_name'            // PJ명
   | 'project_vendor'          // PJ업체
   | 'project_item'            // PJ ITEM
   | 'sales_order_number'      // 수주번호

@@ -116,6 +116,18 @@ export const DONE_TAB_COLUMNS: ColumnInfo[] = [
     defaultVisible: true,
   },
   {
+    id: 'usage_purpose',
+    label: '사용목적 및 사용처',
+    description: '품목을 무엇에, 어느 설비·현장에 쓰는지',
+    defaultVisible: true,
+  },
+  {
+    id: 'project_name',
+    label: 'PJ명',
+    description: 'PROJECT명',
+    defaultVisible: true,
+  },
+  {
     id: 'project_vendor',
     label: 'PJ업체',
     description: '프로젝트 업체',
@@ -234,12 +246,14 @@ export const COLUMN_GROUPS = [
       'unit_price',
       'amount',
       'remark',
+      'usage_purpose',
       'link',
     ] as DoneTabColumnId[],
   },
   {
     title: '프로젝트 정보',
     columns: [
+      'project_name',
       'project_vendor',
       'project_item',
       'sales_order_number',

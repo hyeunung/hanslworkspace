@@ -95,6 +95,7 @@ type ItemAddRow = {
   unit: string
   unitPrice: string
   remark: string
+  usagePurpose: string
 }
 
 type ItemAddPayloadItem = {
@@ -104,6 +105,7 @@ type ItemAddPayloadItem = {
   unit: string
   unit_price: number
   remark?: string | null
+  usage_purpose?: string | null
 }
 
 type PriceChangeType = 'unit_price' | 'amount'
@@ -244,7 +246,7 @@ export default function SupportMain() {
       setPriceChangeRows([{ id: createRowId(), itemId: '', changeType: 'unit_price', newValue: '' }])
     }
     if (inquiryType === 'item_add' && itemAddRows.length === 0) {
-      setItemAddRows([{ id: createRowId(), itemName: '', specification: '', quantity: '', unit: 'EA', unitPrice: '', remark: '' }])
+      setItemAddRows([{ id: createRowId(), itemName: '', specification: '', quantity: '', unit: 'EA', unitPrice: '', remark: '', usagePurpose: '' }])
     }
     if (inquiryType === 'new_vendor' && newVendorContacts.length === 0) {
       setNewVendorContacts([{ id: createRowId(), contact_name: '', position: '', contact_phone: '', contact_email: '' }])
@@ -656,7 +658,7 @@ export default function SupportMain() {
       setPriceChangeRows([{ id: createRowId(), itemId: '', changeType: 'unit_price', newValue: '' }])
     }
     if (inquiryType === 'item_add' && itemAddRows.length === 0) {
-      setItemAddRows([{ id: createRowId(), itemName: '', specification: '', quantity: '', unit: 'EA', unitPrice: '', remark: '' }])
+      setItemAddRows([{ id: createRowId(), itemName: '', specification: '', quantity: '', unit: 'EA', unitPrice: '', remark: '', usagePurpose: '' }])
     }
   }, [inquiryType, quantityChangeRows.length, priceChangeRows.length, itemAddRows.length])
 
@@ -994,7 +996,7 @@ export default function SupportMain() {
   const addItemAddRow = () => {
     setItemAddRows(prev => [
       ...prev,
-      { id: createRowId(), itemName: '', specification: '', quantity: '', unit: 'EA', unitPrice: '', remark: '' }
+      { id: createRowId(), itemName: '', specification: '', quantity: '', unit: 'EA', unitPrice: '', remark: '', usagePurpose: '' }
     ])
   }
 
@@ -1209,6 +1211,11 @@ export default function SupportMain() {
           setLoading(false)
           return
         }
+        if (!row.usagePurpose.trim()) {
+          toast.error('사용목적 및 사용처를 입력해주세요.')
+          setLoading(false)
+          return
+        }
 
         itemsPayload.push({
           item_name: row.itemName.trim(),
@@ -1217,6 +1224,7 @@ export default function SupportMain() {
           unit: row.unit.trim() || 'EA',
           unit_price: unitPrice,
           remark: row.remark.trim() || null,
+          usage_purpose: row.usagePurpose.trim(),
         })
         const amount = quantity * unitPrice
         summaryLines.push(
@@ -2134,7 +2142,7 @@ ${itemsText}`;
     }
 
     if (inquiry.inquiry_type === 'item_add') {
-      const p = payload as { items: Array<{ item_name: string; specification?: string | null; quantity: number; unit: string; unit_price: number; remark?: string | null }> }
+      const p = payload as { items: Array<{ item_name: string; specification?: string | null; quantity: number; unit: string; unit_price: number; remark?: string | null; usage_purpose?: string | null }> }
       const items = Array.isArray(p.items) ? p.items : []
       if (items.length === 0) return null
       return (
@@ -2147,6 +2155,7 @@ ${itemsText}`;
                 <div key={`item-add-${index}`}>
                   {item.item_name} ({item.specification || '-'}) {item.quantity}{item.unit} × {item.unit_price.toLocaleString('ko-KR')} = {amount.toLocaleString('ko-KR')}
                   {item.remark ? ` (${item.remark})` : ''}
+                  {item.usage_purpose ? ` · 사용목적: ${item.usage_purpose}` : ''}
                 </div>
               )
             })}
@@ -3119,6 +3128,16 @@ ${itemsText}`;
                               value={row.remark}
                               onChange={(e) => updateItemAddRow(row.id, { remark: e.target.value })}
                               placeholder="비고"
+                              className="w-full business-radius-input h-7 !text-[11px] !leading-tight"
+                              disabled={!selectedPurchase}
+                            />
+                          </div>
+                          <div className="flex-[2] min-w-0">
+                            <Input
+                              type="text"
+                              value={row.usagePurpose}
+                              onChange={(e) => updateItemAddRow(row.id, { usagePurpose: e.target.value })}
+                              placeholder="사용목적 및 사용처 *"
                               className="w-full business-radius-input h-7 !text-[11px] !leading-tight"
                               disabled={!selectedPurchase}
                             />

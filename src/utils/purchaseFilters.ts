@@ -27,6 +27,7 @@ const ITEM_FIELDS = [
   'manufacturer',
   'model',
   'remark',
+  'usage_purpose',
   'link'
 ]
 
@@ -328,6 +329,7 @@ export const PURCHASE_SEARCH_HEADER_COLUMNS = [
   'sales_order_number',
   'requester_name',
   'vendor_name',
+  'project_name',
   'project_vendor',
   'project_item',
   'payment_category',
@@ -338,6 +340,7 @@ export const PURCHASE_SEARCH_ITEM_COLUMNS = [
   'item_name',
   'specification',
   'remark',
+  'usage_purpose',
   'link',
 ] as const
 

@@ -25,6 +25,7 @@ const FIELD_LABELS: Record<string, string> = {
   unit_price_value: '단가',
   link: '링크',
   remark: '비고',
+  usage_purpose: '사용목적 및 사용처',
 }
 
 // 선택 셀 표시: 제작현황과 동일 (파란 테두리 + 반투명 파란 배경)
@@ -43,6 +44,7 @@ const COL_META: Record<string, { align: string; minWidth: number }> = {
   amount_value: { align: 'text-right', minWidth: 90 },
   link: { align: 'text-left', minWidth: 150 },
   remark: { align: 'text-left', minWidth: 150 },
+  usage_purpose: { align: 'text-left', minWidth: 180 },
 }
 
 export default function PurchaseItemsGrid({
@@ -59,7 +61,7 @@ export default function PurchaseItemsGrid({
 
   const showLink = paymentCategory === '구매 요청'
   const cols = useMemo(
-    () => ['item_name', 'specification', 'quantity', 'unit_price_value', 'amount_value', ...(showLink ? ['link'] : []), 'remark'],
+    () => ['item_name', 'specification', 'quantity', 'unit_price_value', 'amount_value', ...(showLink ? ['link'] : []), 'remark', 'usage_purpose'],
     [showLink]
   )
 
@@ -124,7 +126,7 @@ export default function PurchaseItemsGrid({
         />
       )
     }
-    const key = field as 'item_name' | 'specification' | 'link' | 'remark'
+    const key = field as 'item_name' | 'specification' | 'link' | 'remark' | 'usage_purpose'
     return (
       <input
         {...common}
@@ -162,7 +164,9 @@ export default function PurchaseItemsGrid({
         onMouseDown={(e) => grid.onCellMouseDown(e, idx, c)}
         onMouseEnter={(e) => grid.onCellMouseEnter(e, idx, c)}
       >
-        {displayValue(item, field) || ' '}
+        {displayValue(item, field) || (field === 'usage_purpose' && item.item_name?.trim()
+          ? <span className="text-red-400">입력 필요</span>
+          : ' ')}
       </td>
     )
   }
@@ -190,6 +194,9 @@ export default function PurchaseItemsGrid({
               </th>
               {showLink && <th className="hansl-th" style={{ minWidth: COL_META.link.minWidth }}>링크</th>}
               <th className="hansl-th" style={{ minWidth: COL_META.remark.minWidth }}>비고</th>
+              <th className="hansl-th" style={{ minWidth: COL_META.usage_purpose.minWidth }} title="무엇에 쓰는지, 어느 설비·현장에 쓰는지 (프로젝트는 요청정보의 PJ명에 기재)">
+                사용목적 및 사용처<span className="text-red-500">*</span>
+              </th>
               <th className="hansl-th text-center" style={{ width: 26, minWidth: 26 }}>삭제</th>
             </tr>
           </thead>

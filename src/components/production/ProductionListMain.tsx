@@ -1378,6 +1378,10 @@ export default function ProductionListMain() {
       toast.error(addingPcbRows.length > 1 ? '모든 행의 보드명을 입력해 주세요.' : '보드명을 입력해 주세요.')
       return
     }
+    if (addingPcbRows.some(r => !r.client_name?.trim() || !r.client_manager?.trim())) {
+      toast.error('PJT 담당자의 업체와 업체 담당자를 입력해 주세요.')
+      return
+    }
     if (newRowNotifyTeams.length === 0) {
       toast.error('알림 보낼 부서를 선택해 주세요.')
       return
@@ -1441,6 +1445,10 @@ export default function ProductionListMain() {
     if (addingCableRows.length === 0) return
     if (addingCableRows.some(r => !r.board_name)) {
       toast.error(addingCableRows.length > 1 ? '모든 행의 품명을 입력해 주세요.' : '품명을 입력해 주세요.')
+      return
+    }
+    if (addingCableRows.some(r => !r.client_name?.trim() || !r.client_manager?.trim())) {
+      toast.error('PJT 담당자의 업체와 업체 담당자를 입력해 주세요.')
       return
     }
     if (newRowNotifyTeams.length === 0) {
@@ -3998,6 +4006,10 @@ export default function ProductionListMain() {
       toast.error('보드명(품명)을 입력해 주세요.')
       return
     }
+    if (!formFields.client_name?.trim() || !formFields.client_manager?.trim()) {
+      toast.error('발주 업체명과 업체 담당자를 입력해 주세요.')
+      return
+    }
 
     try {
       if (modalType === 'pcb') {
@@ -5107,7 +5119,7 @@ export default function ProductionListMain() {
                           listId="vendors-list"
                           value={addingPcbRow.client_name || ''}
                           onChange={(v) => setAddingPcbRow({ ...addingPcbRow, client_name: v })}
-                          placeholder="업체"
+                          placeholder="업체*"
                           memo={false}
                           className="hansl-cell-input"
                         />
@@ -5117,7 +5129,7 @@ export default function ProductionListMain() {
                           listId="contacts-list-adding-pcb"
                           value={addingPcbRow.client_manager || ''}
                           onChange={(v) => setAddingPcbRow({ ...addingPcbRow, client_manager: v })}
-                          placeholder="업체 담당자"
+                          placeholder="업체 담당자*"
                           memo={false}
                           className="hansl-cell-input"
                         />
@@ -5716,7 +5728,7 @@ export default function ProductionListMain() {
                           listId="vendors-list"
                           value={addingCableRow.client_name || ''}
                           onChange={(v) => setAddingCableRow({ ...addingCableRow, client_name: v })}
-                          placeholder="업체명"
+                          placeholder="업체명*"
                           memo={false}
                           className="hansl-cell-input"
                         />
@@ -5726,7 +5738,7 @@ export default function ProductionListMain() {
                           listId="contacts-list-adding-cable"
                           value={addingCableRow.client_manager || ''}
                           onChange={(v) => setAddingCableRow({ ...addingCableRow, client_manager: v })}
-                          placeholder="업체 담당자"
+                          placeholder="업체 담당자*"
                           memo={false}
                           className="hansl-cell-input"
                         />
@@ -6012,7 +6024,7 @@ export default function ProductionListMain() {
 
                 {/* 업체명 */}
                 <div>
-                  <label className="modal-label mb-1 block">발주 업체명</label>
+                  <label className="modal-label mb-1 block">발주 업체명 *</label>
                   <input
                     type="text"
                     value={formFields.client_name}
@@ -6024,7 +6036,7 @@ export default function ProductionListMain() {
 
                 {/* 업체 담당자 */}
                 <div>
-                  <label className="modal-label mb-1 block">업체 담당자 성함</label>
+                  <label className="modal-label mb-1 block">업체 담당자 성함 *</label>
                   <input
                     type="text"
                     value={formFields.client_manager}
