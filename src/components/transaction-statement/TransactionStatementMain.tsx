@@ -81,11 +81,21 @@ interface EmployeeOption {
 }
 
 export default function TransactionStatementMain() {
-  const { currentUserRoles } = useAuth();
+  const { currentUserRoles, user, currentUserEmail } = useAuth();
   const supabase = createClient();
   
   // superadmin 권한 확인
   const isAppAdmin = currentUserRoles.includes('superadmin');
+
+  // 삭제 가능 여부: superadmin은 항상, 등록자 본인은 수량일치 확정 전까지
+  const canDeleteStatement = (statement: TransactionStatement) => {
+    if (isAppAdmin) return true;
+    if (statement.quantity_match_confirmed_at) return false;
+    const isOwnerById = !!user?.id && statement.uploaded_by === user.id;
+    const isOwnerByEmail = !!currentUserEmail && !!statement.uploaded_by_email
+      && statement.uploaded_by_email.toLowerCase() === currentUserEmail.toLowerCase();
+    return isOwnerById || isOwnerByEmail;
+  };
   
   const [statements, setStatements] = useState<TransactionStatement[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1309,7 +1319,7 @@ export default function TransactionStatementMain() {
                             >
                               <ImageIcon className="w-3.5 h-3.5" />
                             </button>
-                            {isAppAdmin && (
+                            {canDeleteStatement(statement) && (
                               <button
                                 onClick={(e) => handleDelete(e, statement)}
                                 className="p-1.5 rounded-md hover:bg-red-50 text-red-400 hover:text-red-600 transition-colors"
@@ -1395,6 +1405,15 @@ export default function TransactionStatementMain() {
                         <ImageIcon className="w-3 h-3 mr-1" />
                         보기
                       </button>
+                      {canDeleteStatement(statement) && (
+                        <button
+                          onClick={(e) => handleDelete(e, statement)}
+                          className="button-base px-2 py-1 text-[10px] border border-red-200 text-red-500 hover:bg-red-50"
+                        >
+                          <Trash2 className="w-3 h-3 mr-1" />
+                          삭제
+                        </button>
+                      )}
                     </div>
                   </div>
                 ))}
