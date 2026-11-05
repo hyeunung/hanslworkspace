@@ -12,6 +12,8 @@ interface ChangelogEntry {
   title: string
   /** 업데이트 안내 팝업에 표시할 스크린샷 경로 (public 기준, 선택) */
   image?: string
+  /** 스크린샷이 여러 장일 때 사용 (image보다 우선, 순서대로 표시) */
+  images?: string[]
   changes: { type: string; text: string }[]
 }
 
