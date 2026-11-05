@@ -1,5 +1,44 @@
 [
   {
+    "version": "1.1.9",
+    "date": "2026-11-05",
+    "title": "발주에 PROJECT · 사용목적 입력 추가",
+    "images": [
+      "/changelog/v1.1.9-purchase-project.png",
+      "/changelog/v1.1.9-production-project.png"
+    ],
+    "changes": [
+      {
+        "type": "feature",
+        "text": "새요청에 PROJECT를 꼭 입력해야 합니다."
+      },
+      {
+        "type": "feature",
+        "text": "수주번호를 선택하면 PROJECT · PJ업체 · Item이 자동으로 채워집니다."
+      },
+      {
+        "type": "feature",
+        "text": "품목마다 '사용목적 및 사용처'를 꼭 입력해야 합니다. (품목 추가 문의 포함)"
+      },
+      {
+        "type": "feature",
+        "text": "제작현황에 PROJECT 칼럼이 생겼고, 행을 추가할 때 꼭 입력해야 합니다."
+      },
+      {
+        "type": "improvement",
+        "text": "발주 목록과 상세 화면에서 PROJECT와 사용목적을 볼 수 있습니다."
+      },
+      {
+        "type": "improvement",
+        "text": "제작현황 행을 추가할 때 업체와 업체 담당자를 꼭 입력해야 합니다."
+      },
+      {
+        "type": "improvement",
+        "text": "PROJECT 칸을 처음 누르면 안내창이 뜹니다. '다시 보지 않기'를 누르면 다시 뜨지 않습니다."
+      }
+    ]
+  },
+  {
     "version": "1.1.8",
     "date": "2026-11-05",
     "title": "거래명세서 본인 등록건 삭제 지원",

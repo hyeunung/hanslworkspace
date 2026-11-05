@@ -23,7 +23,9 @@ export default function UpdateNotificationModal() {
   if (!isOpen || !version) return null
 
   // 스크린샷이 포함된 안내는 이미지 가독성을 위해 모달을 넓게 사용
-  const hasImage = changes.some((entry) => entry.image)
+  const imagesOf = (entry: (typeof changes)[number]) =>
+    entry.images?.length ? entry.images : entry.image ? [entry.image] : []
+  const hasImage = changes.some((entry) => imagesOf(entry).length > 0)
 
   return (
     <Dialog open={isOpen}>
@@ -68,14 +70,15 @@ export default function UpdateNotificationModal() {
                       {entry.title}
                     </p>
                   )}
-                  {entry.image && (
+                  {imagesOf(entry).map((src, i) => (
                     // 세로형 스크린샷도 스크롤 없이 변경사항 목록과 함께 보이도록 높이를 제한
                     <img
-                      src={entry.image}
-                      alt={entry.title}
+                      key={src}
+                      src={src}
+                      alt={`${entry.title} ${i + 1}`}
                       className="w-auto max-w-full max-h-[260px] mx-auto rounded-md border border-gray-200 mb-2.5"
                     />
-                  )}
+                  ))}
                   <div className="space-y-1.5">
                     {entry.changes.map((change, i) => {
                       const cfg = typeConfig[change.type] || typeConfig.maintenance
