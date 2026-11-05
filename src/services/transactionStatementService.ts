@@ -3076,12 +3076,20 @@ class TransactionStatementService {
         .single();
 
       // DB 삭제 (cascade로 품목도 함께 삭제됨)
-      const { error } = await this.supabase
+      // RLS: superadmin 또는 등록자 본인(수량일치 확정 전)만 삭제 가능
+      const { data: deleted, error } = await this.supabase
         .from('transaction_statements')
         .delete()
-        .eq('id', statementId);
+        .eq('id', statementId)
+        .select('id');
 
       if (error) throw error;
+      if (!deleted || deleted.length === 0) {
+        return {
+          success: false,
+          error: '삭제 권한이 없습니다. 수량일치 확정 전, 본인이 등록한 거래명세서만 삭제할 수 있습니다.'
+        };
+      }
 
       // Storage 파일 삭제 시도
       if (statement?.image_url) {
